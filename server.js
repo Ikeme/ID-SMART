@@ -1,4 +1,4 @@
-// server.js - Node.js ID Card Generator
+// server.js - Node.js ID Card Generator with Cloudinary
 const express = require('express');
 const multer = require('multer');
 const { createCanvas, loadImage, registerFont } = require('canvas');
@@ -6,21 +6,22 @@ const QRCode = require('qrcode');
 const path = require('path');
 const fs = require('fs').promises;
 const fsSync = require('fs');
+const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Configuration
-const UPLOAD_FOLDER = path.join(__dirname, 'static', 'uploads');
-const OUTPUT_FOLDER = path.join(__dirname, 'static', 'id_cards');
-const TEMPLATES_FOLDER = path.join(__dirname, 'static');
-
-// Create folders if they don't exist
-[UPLOAD_FOLDER, OUTPUT_FOLDER].forEach(folder => {
-    if (!fsSync.existsSync(folder)) {
-        fsSync.mkdirSync(folder, { recursive: true });
-    }
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
 });
+
+// Configuration
+const TEMPLATES_FOLDER = path.join(__dirname, 'static');
 
 // Constants (matching your Python version)
 const CM_TO_PX = 300 / 2.54;
@@ -59,17 +60,14 @@ if (!fontLoaded) {
     console.warn('⚠ No custom font loaded. Using system default.');
 }
 
-// Multer configuration for file uploads
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, UPLOAD_FOLDER);
-    },
-    filename: (req, file, cb) => {
-        const reg = req.body.reg || 'temp';
-        const ext = path.extname(file.originalname);
-        const safeReg = reg.replace(/[^a-z0-9_-]/gi, '_');
-        cb(null, `${safeReg}_photo${ext}`);
-    }
+// Multer configuration with Cloudinary storage
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'futo-id-cards/uploads',
+    allowed_formats: ['jpg', 'png', 'jpeg', 'gif'],
+    transformation: [{ width: 280, height: 280, crop: 'fill' }]
+  }
 });
 
 const upload = multer({
@@ -122,23 +120,22 @@ function validateFormInput(data) {
     return { valid: true };
 }
 
-async function generateQRCode(data, outputPath) {
+async function generateQRCode(data) {
     const qrText = `Name: ${data.name}\nReg: ${data.reg}\nDept: ${data.dept}`;
-    await QRCode.toFile(outputPath, qrText, {
+    return await QRCode.toBuffer(qrText, {
         width: QR_SIZE.width,
         margin: 1
     });
 }
 
-async function generateIDCard(formData, photoPath) {
+async function generateIDCard(formData, photoUrl) {
     const { name, reg, dept, faculty, gender, expiry } = formData;
     
     // Sanitize reg number for filenames
     const safeReg = reg.replace(/[^a-z0-9_-]/gi, '_');
     
-    // Generate QR code
-    const qrPath = path.join(OUTPUT_FOLDER, `futo_${safeReg}_qr.png`);
-    await generateQRCode({ name, reg, dept }, qrPath);
+    // Generate QR code buffer
+    const qrBuffer = await generateQRCode({ name, reg, dept });
     
     // Load templates
     const frontTemplatePath = path.join(TEMPLATES_FOLDER, 'front_template.png');
@@ -159,18 +156,32 @@ async function generateIDCard(formData, photoPath) {
     const frontTemplate = await loadImage(frontTemplatePath);
     frontCtx.drawImage(frontTemplate, 0, 0, CARD_WIDTH, CARD_HEIGHT);
     
-    // Add QR code
-    const qrImage = await loadImage(qrPath);
+    // Add QR code from buffer
+    const qrImage = await loadImage(qrBuffer);
     frontCtx.drawImage(qrImage, QR_POSITION.x, QR_POSITION.y, QR_SIZE.width, QR_SIZE.height);
     
-    // Add photo
-    const photoImage = await loadImage(photoPath);
+    // Add photo from Cloudinary URL
+    const photoImage = await loadImage(photoUrl);
     frontCtx.drawImage(photoImage, PHOTO_POSITION.x, PHOTO_POSITION.y, PHOTO_SIZE.width, PHOTO_SIZE.height);
     
-    // Save front card
-    const frontOutput = path.join(OUTPUT_FOLDER, `futo_${safeReg}_front.png`);
+    // Generate front card buffer
     const frontBuffer = frontCanvas.toBuffer('image/png');
-    await fs.writeFile(frontOutput, frontBuffer);
+    
+    // Upload front card to Cloudinary
+    const frontUploadResult = await new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+            {
+                folder: 'futo-id-cards/generated',
+                public_id: `futo_${safeReg}_front`,
+                resource_type: 'image'
+            },
+            (error, result) => {
+                if (error) reject(error);
+                else resolve(result);
+            }
+        );
+        uploadStream.end(frontBuffer);
+    });
     
     // Create back card
     const backCanvas = createCanvas(CARD_WIDTH, CARD_HEIGHT);
@@ -200,42 +211,31 @@ async function generateIDCard(formData, photoPath) {
     backCtx.fillText('EXPIRY', expX, 3.87 * CM_TO_PX + ptToPx(6));
     backCtx.fillText(expiry, expX, 4.17 * CM_TO_PX + ptToPx(6));
     
-    // Save back card
-    const backOutput = path.join(OUTPUT_FOLDER, `futo_${safeReg}_back.png`);
+    // Generate back card buffer
     const backBuffer = backCanvas.toBuffer('image/png');
-    await fs.writeFile(backOutput, backBuffer);
+    
+    // Upload back card to Cloudinary
+    const backUploadResult = await new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+            {
+                folder: 'futo-id-cards/generated',
+                public_id: `futo_${safeReg}_back`,
+                resource_type: 'image'
+            },
+            (error, result) => {
+                if (error) reject(error);
+                else resolve(result);
+            }
+        );
+        uploadStream.end(backBuffer);
+    });
     
     console.log(`✓ Generated ID card for: ${reg}`);
-    return { frontOutput, backOutput };
+    return { 
+        frontUrl: frontUploadResult.secure_url, 
+        backUrl: backUploadResult.secure_url 
+    };
 }
-
-// Cleanup old files (files older than 24 hours)
-async function cleanupOldFiles() {
-    const folders = [UPLOAD_FOLDER, OUTPUT_FOLDER];
-    const now = Date.now();
-    const maxAge = 24 * 60 * 60 * 1000; // 24 hours
-    
-    for (const folder of folders) {
-        try {
-            const files = await fs.readdir(folder);
-            
-            for (const file of files) {
-                const filePath = path.join(folder, file);
-                const stats = await fs.stat(filePath);
-                
-                if (now - stats.mtimeMs > maxAge) {
-                    await fs.unlink(filePath);
-                    console.log(`Cleaned up old file: ${file}`);
-                }
-            }
-        } catch (err) {
-            console.error(`Error cleaning up ${folder}:`, err.message);
-        }
-    }
-}
-
-// Run cleanup every hour
-setInterval(cleanupOldFiles, 60 * 60 * 1000);
 
 // Routes
 app.get('/', (req, res) => {
@@ -255,31 +255,17 @@ app.post('/generate', upload.single('photo'), async (req, res) => {
             return res.status(400).json({ error: 'No photo uploaded' });
         }
         
-        // Generate ID card
-        const { frontOutput, backOutput } = await generateIDCard(req.body, req.file.path);
+        // Generate ID card with Cloudinary photo URL
+        // Note: req.file.path contains the Cloudinary URL when using CloudinaryStorage
+        const photoUrl = req.file.path;
+        const { frontUrl, backUrl } = await generateIDCard(req.body, photoUrl);
         
-        // Return JSON with URLs
-        const safeReg = req.body.reg.replace(/[^a-z0-9_-]/gi, '_');
-        const frontUrl = `/id_cards/futo_${safeReg}_front.png`;
-        const backUrl = `/download-back/${req.body.reg}`;
+        // Return JSON with Cloudinary URLs
         res.json({ success: true, frontUrl, backUrl });
         
     } catch (error) {
         console.error('Error generating ID card:', error);
         res.status(500).json({ error: `Error: ${error.message}` });
-    }
-});
-
-// Download back card endpoint
-app.get('/download-back/:reg', (req, res) => {
-    const safeReg = req.params.reg.replace(/[^a-z0-9_-]/gi, '_');
-    const backPath = path.join(OUTPUT_FOLDER, `futo_${safeReg}_back.png`);
-    
-    if (fsSync.existsSync(backPath)) {
-        res.setHeader('Content-Disposition', `attachment; filename="futo_${safeReg}_back.png"`);
-        res.sendFile(backPath);
-    } else {
-        res.status(404).json({ error: 'Back card not found' });
     }
 });
 
@@ -297,11 +283,13 @@ app.use((err, req, res, next) => {
 // Start server
 app.listen(PORT, () => {
     console.log('═══════════════════════════════════════════════════');
-    console.log('🎉 FUTO ID Card Generator (Node.js) is running!');
+    console.log('🎉 FUTO ID Card Generator (Node.js + Cloudinary)');
     console.log(`📍 Open your browser: http://localhost:${PORT}`);
     console.log('═══════════════════════════════════════════════════');
-    console.log(`✓ Upload folder: ${UPLOAD_FOLDER}`);
-    console.log(`✓ Output folder: ${OUTPUT_FOLDER}`);
+    console.log(`✓ Cloudinary: ${process.env.CLOUDINARY_CLOUD_NAME ? 'Configured' : 'Not configured'}`);
     console.log(`✓ Font loaded: ${fontLoaded ? 'Yes' : 'No (using default)'}`);
     console.log('═══════════════════════════════════════════════════');
 });
+
+// Export for Vercel serverless
+module.exports = app;
