@@ -256,7 +256,9 @@ app.post('/generate', upload.single('photo'), async (req, res) => {
         }
         
         // Generate ID card with Cloudinary photo URL
-        const { frontUrl, backUrl } = await generateIDCard(req.body, req.file.path);
+        // Note: req.file.path contains the Cloudinary URL when using CloudinaryStorage
+        const photoUrl = req.file.path;
+        const { frontUrl, backUrl } = await generateIDCard(req.body, photoUrl);
         
         // Return JSON with Cloudinary URLs
         res.json({ success: true, frontUrl, backUrl });
