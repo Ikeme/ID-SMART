@@ -137,23 +137,25 @@
             const data = await response.json();
             
             if (data.success) {
-              // Display front card image
+              // Display front card image from Cloudinary
               const img = document.createElement('img');
               img.src = data.frontUrl;
               img.alt = 'Generated ID Card Front';
               img.style.maxWidth = '100%';
               img.style.marginBottom = '20px';
               
-              // Create download buttons with correct filenames
+              // Create download buttons with Cloudinary URLs
               const frontBtn = document.createElement('a');
               frontBtn.href = data.frontUrl;
               frontBtn.download = `futo_${reg}_front.png`;
+              frontBtn.target = '_blank';
               frontBtn.textContent = 'Download Front Card';
               frontBtn.className = 'download-btn';
               
               const backBtn = document.createElement('a');
               backBtn.href = data.backUrl;
               backBtn.download = `futo_${reg}_back.png`;
+              backBtn.target = '_blank';
               backBtn.textContent = 'Download Back Card';
               backBtn.className = 'download-btn';
               
