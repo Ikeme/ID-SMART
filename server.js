@@ -7,17 +7,44 @@ const path = require('path');
 const fs = require('fs').promises;
 const fsSync = require('fs');
 const cloudinary = require('cloudinary').v2;
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Parse Cloudinary URL if provided
+function parseCloudinaryUrl(url) {
+    if (!url) {
+        return {};
+    }
+    if (url === '') {
+        console.warn('CLOUDINARY_URL is set but empty');
+        return {};
+    }
+    if (!url.startsWith('cloudinary://')) {
+        console.warn('CLOUDINARY_URL has invalid format, expected: cloudinary://api_key:api_secret@cloud_name');
+        return {};
+    }
+    try {
+        // Format: cloudinary://API_KEY:API_SECRET@CLOUD_NAME
+        const urlObj = new URL(url);
+        return {
+            cloud_name: urlObj.hostname,
+            api_key: urlObj.username,
+            api_secret: urlObj.password
+        };
+    } catch (error) {
+        console.error('Failed to parse CLOUDINARY_URL:', error.message);
+        return {};
+    }
+}
+
 // Configure Cloudinary
+const cloudinaryUrlConfig = parseCloudinaryUrl(process.env.CLOUDINARY_URL);
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || cloudinaryUrlConfig.cloud_name,
+  api_key: process.env.CLOUDINARY_API_KEY || cloudinaryUrlConfig.api_key,
+  api_secret: process.env.CLOUDINARY_API_SECRET || cloudinaryUrlConfig.api_secret
 });
 
 // Configuration
@@ -60,15 +87,8 @@ if (!fontLoaded) {
     console.warn('⚠ No custom font loaded. Using system default.');
 }
 
-// Multer configuration with Cloudinary storage
-const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: 'futo-id-cards/uploads',
-    allowed_formats: ['jpg', 'png', 'jpeg', 'gif'],
-    transformation: [{ width: 280, height: 280, crop: 'fill' }]
-  }
-});
+// Multer configuration - use memory storage for direct Cloudinary upload
+const storage = multer.memoryStorage();
 
 const upload = multer({
     storage: storage,
@@ -255,9 +275,23 @@ app.post('/generate', upload.single('photo'), async (req, res) => {
             return res.status(400).json({ error: 'No photo uploaded' });
         }
         
-        // Generate ID card with Cloudinary photo URL
-        // Note: req.file.path contains the Cloudinary URL when using CloudinaryStorage
-        const photoUrl = req.file.path;
+        // Upload photo to Cloudinary directly from memory buffer
+        const uploadResult = await new Promise((resolve, reject) => {
+            const uploadStream = cloudinary.uploader.upload_stream(
+                {
+                    folder: 'futo-id-cards/uploads',
+                    transformation: [{ width: 280, height: 280, crop: 'fill' }],
+                    resource_type: 'image'
+                },
+                (error, result) => {
+                    if (error) reject(error);
+                    else resolve(result);
+                }
+            );
+            uploadStream.end(req.file.buffer);
+        });
+        
+        const photoUrl = uploadResult.secure_url;
         const { frontUrl, backUrl } = await generateIDCard(req.body, photoUrl);
         
         // Return JSON with Cloudinary URLs
@@ -282,11 +316,14 @@ app.use((err, req, res, next) => {
 
 // Start server
 app.listen(PORT, () => {
+    const cloudinaryConfig = cloudinary.config();
+    const isCloudinaryConfigured = cloudinaryConfig.cloud_name && cloudinaryConfig.api_key && cloudinaryConfig.api_secret;
+    
     console.log('═══════════════════════════════════════════════════');
     console.log('🎉 FUTO ID Card Generator (Node.js + Cloudinary)');
     console.log(`📍 Open your browser: http://localhost:${PORT}`);
     console.log('═══════════════════════════════════════════════════');
-    console.log(`✓ Cloudinary: ${process.env.CLOUDINARY_CLOUD_NAME ? 'Configured' : 'Not configured'}`);
+    console.log(`✓ Cloudinary: ${isCloudinaryConfigured ? 'Configured' : 'Not configured'}`);
     console.log(`✓ Font loaded: ${fontLoaded ? 'Yes' : 'No (using default)'}`);
     console.log('═══════════════════════════════════════════════════');
 });
