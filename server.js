@@ -13,11 +13,31 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Parse Cloudinary URL if provided
+function parseCloudinaryUrl(url) {
+    if (!url || !url.startsWith('cloudinary://')) {
+        return {};
+    }
+    try {
+        // Format: cloudinary://API_KEY:API_SECRET@CLOUD_NAME
+        const urlObj = new URL(url);
+        return {
+            cloud_name: urlObj.hostname,
+            api_key: urlObj.username,
+            api_secret: urlObj.password
+        };
+    } catch (error) {
+        console.error('Failed to parse CLOUDINARY_URL:', error.message);
+        return {};
+    }
+}
+
 // Configure Cloudinary
+const cloudinaryUrlConfig = parseCloudinaryUrl(process.env.CLOUDINARY_URL);
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_URL?.split('@')[1],
-  api_key: process.env.CLOUDINARY_API_KEY || process.env.CLOUDINARY_URL?.split('://')[1]?.split(':')[0],
-  api_secret: process.env.CLOUDINARY_API_SECRET || process.env.CLOUDINARY_URL?.split(':')[2]?.split('@')[0]
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || cloudinaryUrlConfig.cloud_name,
+  api_key: process.env.CLOUDINARY_API_KEY || cloudinaryUrlConfig.api_key,
+  api_secret: process.env.CLOUDINARY_API_SECRET || cloudinaryUrlConfig.api_secret
 });
 
 // Configuration
@@ -282,11 +302,14 @@ app.use((err, req, res, next) => {
 
 // Start server
 app.listen(PORT, () => {
+    const cloudinaryConfig = cloudinary.config();
+    const isCloudinaryConfigured = cloudinaryConfig.cloud_name && cloudinaryConfig.api_key && cloudinaryConfig.api_secret;
+    
     console.log('═══════════════════════════════════════════════════');
     console.log('🎉 FUTO ID Card Generator (Node.js + Cloudinary)');
     console.log(`📍 Open your browser: http://localhost:${PORT}`);
     console.log('═══════════════════════════════════════════════════');
-    console.log(`✓ Cloudinary: ${process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_URL ? 'Configured' : 'Not configured'}`);
+    console.log(`✓ Cloudinary: ${isCloudinaryConfigured ? 'Configured' : 'Not configured'}`);
     console.log(`✓ Font loaded: ${fontLoaded ? 'Yes' : 'No (using default)'}`);
     console.log('═══════════════════════════════════════════════════');
 });
