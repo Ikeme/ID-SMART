@@ -1,7 +1,7 @@
 {
   "name": "id-smart",
   "version": "1.0.0",
-  "description": "FUTO STUDENT SMART ID PROJECT",
+  "description": "FUTO STUDENT SMART ID PROJECT - Student ID Card Generator",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -12,12 +12,14 @@
     "multer": "^1.4.5-lts.1",
     "canvas": "^2.11.2",
     "qrcode": "^1.5.3",
-    "cloudinary": "^2.7.0",
+    "cloudinary": "^1.41.0",
     "multer-storage-cloudinary": "^4.0.0",
     "dotenv": "^16.3.1"
   },
   "engines": {
     "node": ">=18.0.0"
   },
+  "keywords": ["futo", "id-card", "student", "generator"],
+  "author": "Ikeme",
   "license": "MIT"
 }
