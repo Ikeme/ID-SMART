@@ -15,9 +15,9 @@ const PORT = process.env.PORT || 3000;
 
 // Configure Cloudinary
 cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_URL?.split('@')[1],
+  api_key: process.env.CLOUDINARY_API_KEY || process.env.CLOUDINARY_URL?.split('://')[1]?.split(':')[0],
+  api_secret: process.env.CLOUDINARY_API_SECRET || process.env.CLOUDINARY_URL?.split(':')[2]?.split('@')[0]
 });
 
 // Configuration
@@ -286,7 +286,7 @@ app.listen(PORT, () => {
     console.log('🎉 FUTO ID Card Generator (Node.js + Cloudinary)');
     console.log(`📍 Open your browser: http://localhost:${PORT}`);
     console.log('═══════════════════════════════════════════════════');
-    console.log(`✓ Cloudinary: ${process.env.CLOUDINARY_CLOUD_NAME ? 'Configured' : 'Not configured'}`);
+    console.log(`✓ Cloudinary: ${process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_URL ? 'Configured' : 'Not configured'}`);
     console.log(`✓ Font loaded: ${fontLoaded ? 'Yes' : 'No (using default)'}`);
     console.log('═══════════════════════════════════════════════════');
 });
