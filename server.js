@@ -15,7 +15,15 @@ const PORT = process.env.PORT || 3000;
 
 // Parse Cloudinary URL if provided
 function parseCloudinaryUrl(url) {
-    if (!url || !url.startsWith('cloudinary://')) {
+    if (!url) {
+        return {};
+    }
+    if (url === '') {
+        console.warn('CLOUDINARY_URL is set but empty');
+        return {};
+    }
+    if (!url.startsWith('cloudinary://')) {
+        console.warn('CLOUDINARY_URL has invalid format, expected: cloudinary://api_key:api_secret@cloud_name');
         return {};
     }
     try {
