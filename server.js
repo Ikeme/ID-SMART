@@ -7,7 +7,6 @@ const path = require('path');
 const fs = require('fs').promises;
 const fsSync = require('fs');
 const cloudinary = require('cloudinary').v2;
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
 require('dotenv').config();
 
 const app = express();
@@ -88,15 +87,8 @@ if (!fontLoaded) {
     console.warn('⚠ No custom font loaded. Using system default.');
 }
 
-// Multer configuration with Cloudinary storage
-const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: 'futo-id-cards/uploads',
-    allowed_formats: ['jpg', 'png', 'jpeg', 'gif'],
-    transformation: [{ width: 280, height: 280, crop: 'fill' }]
-  }
-});
+// Multer configuration - use memory storage for direct Cloudinary upload
+const storage = multer.memoryStorage();
 
 const upload = multer({
     storage: storage,
@@ -283,9 +275,23 @@ app.post('/generate', upload.single('photo'), async (req, res) => {
             return res.status(400).json({ error: 'No photo uploaded' });
         }
         
-        // Generate ID card with Cloudinary photo URL
-        // Note: req.file.path contains the Cloudinary URL when using CloudinaryStorage
-        const photoUrl = req.file.path;
+        // Upload photo to Cloudinary directly from memory buffer
+        const uploadResult = await new Promise((resolve, reject) => {
+            const uploadStream = cloudinary.uploader.upload_stream(
+                {
+                    folder: 'futo-id-cards/uploads',
+                    transformation: [{ width: 280, height: 280, crop: 'fill' }],
+                    resource_type: 'image'
+                },
+                (error, result) => {
+                    if (error) reject(error);
+                    else resolve(result);
+                }
+            );
+            uploadStream.end(req.file.buffer);
+        });
+        
+        const photoUrl = uploadResult.secure_url;
         const { frontUrl, backUrl } = await generateIDCard(req.body, photoUrl);
         
         // Return JSON with Cloudinary URLs
