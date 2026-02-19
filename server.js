@@ -210,26 +210,30 @@ async function generateIDCard(formData, photoUrl) {
     const backTemplate = await loadImage(backTemplatePath);
     backCtx.drawImage(backTemplate, 0, 0, CARD_WIDTH, CARD_HEIGHT);
     
-    // Set font and color
+    // Set text properties (CRITICAL for @napi-rs/canvas)
     backCtx.fillStyle = '#000000';
+    backCtx.textBaseline = 'top';  // Use 'top' baseline for consistent positioning
+    backCtx.textAlign = 'left';     // Align text to the left
     
     // Name
     backCtx.font = `${ptToPx(7)}px ${fontLoaded ? 'ArialBold' : 'Arial, sans-serif'}`;
-    backCtx.fillText(name.toUpperCase(), 0.74 * CM_TO_PX, 0.60 * CM_TO_PX + ptToPx(7));
+    backCtx.fillText(name.toUpperCase(), 0.74 * CM_TO_PX, 0.60 * CM_TO_PX);
     
     // Faculty, Dept, Reg, Gender
     backCtx.font = `${ptToPx(4.319)}px ${fontLoaded ? 'ArialBold' : 'Arial, sans-serif'}`;
     const blockX = 1.81 * CM_TO_PX;
-    backCtx.fillText(faculty, blockX, 1.03 * CM_TO_PX + ptToPx(4.319));
-    backCtx.fillText(dept, blockX, 1.38 * CM_TO_PX + ptToPx(4.319));
-    backCtx.fillText(reg, blockX, 1.73 * CM_TO_PX + ptToPx(4.319));
-    backCtx.fillText(gender, blockX, 2.08 * CM_TO_PX + ptToPx(4.319));
+    backCtx.fillText(faculty, blockX, 1.03 * CM_TO_PX);
+    backCtx.fillText(dept, blockX, 1.38 * CM_TO_PX);
+    backCtx.fillText(reg, blockX, 1.73 * CM_TO_PX);
+    backCtx.fillText(gender, blockX, 2.08 * CM_TO_PX);
     
     // Expiry
     backCtx.font = `${ptToPx(6)}px ${fontLoaded ? 'ArialBold' : 'Arial, sans-serif'}`;
     const expX = 0.74 * CM_TO_PX;
-    backCtx.fillText('EXPIRY', expX, 3.87 * CM_TO_PX + ptToPx(6));
-    backCtx.fillText(expiry, expX, 4.17 * CM_TO_PX + ptToPx(6));
+    backCtx.fillText('EXPIRY', expX, 3.87 * CM_TO_PX);
+    backCtx.fillText(expiry, expX, 4.17 * CM_TO_PX);
+    
+    console.log(`✓ Back card text rendered: ${name}`);
     
     // Generate back card buffer
     const backBuffer = backCanvas.toBuffer('image/png');
