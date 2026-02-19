@@ -1,7 +1,7 @@
 // server.js - Node.js ID Card Generator with Cloudinary
 const express = require('express');
 const multer = require('multer');
-const { createCanvas, loadImage, registerFont } = require('canvas');
+const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
 const QRCode = require('qrcode');
 const path = require('path');
 const fs = require('fs').promises;
@@ -73,7 +73,7 @@ let fontLoaded = false;
 for (const fontPath of fontPaths) {
     try {
         if (fsSync.existsSync(fontPath)) {
-            registerFont(fontPath, { family: 'ArialBold' });
+            GlobalFonts.registerFromPath(fontPath, 'ArialBold');
             console.log(`✓ Font loaded from: ${fontPath}`);
             fontLoaded = true;
             break;
